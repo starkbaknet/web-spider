@@ -1,8 +1,5 @@
-use reqwest::StatusCode;
 use std::error::Error;
 
-/// Fetch HTML page data for a given URL
-/// Returns: (html_body, status_code, content_type)
 pub async fn get_page_data(url: &str) -> Result<(String, u16, String), Box<dyn Error>> {
     let response = reqwest::get(url).await?;
 

@@ -83,3 +83,15 @@ impl Page {
         })
     }
 }
+
+pub fn create_page(normalized_url: String, html: String, content_type: String, status_code: i32) -> Page {
+    Page::new(normalized_url, html, content_type, status_code)
+}
+
+pub fn hash_page(page: &Page) -> HashMap<String, String> {
+    page.to_hash()
+}
+
+pub fn dehash_page(data: &HashMap<String, String>) -> Result<Page, String> {
+    Page::from_hash(data)
+}

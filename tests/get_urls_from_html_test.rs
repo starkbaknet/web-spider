@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use spider::crawler::get_urls_from_html;
+    use spider::crawler::get_urls_from_html::get_urls_from_html;
     use std::collections::HashSet;
 
     #[test]

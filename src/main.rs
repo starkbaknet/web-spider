@@ -11,17 +11,19 @@ mod database;
 mod pages;
 mod utils;
 
+use controllers::page_controller::PageController;
+use controllers::page_node_controller::LinksController;
+use controllers::image_controller::ImageController;
+use crawler::crawler::CrawlerConfig;
+
 #[tokio::main]
 async fn main() {
-    // Initialize logging (e.g. tracing_subscriber)
     tracing_subscriber::fmt::init();
 
-    // Helper to get env var or fallback
     fn get_env(key: &str, fallback: &str) -> String {
         env::var(key).unwrap_or_else(|_| fallback.to_string())
     }
 
-    // Parse max concurrency and max pages from env or defaults
     let max_concurrency = env::var("MAX_CONCURRENCY")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -38,41 +40,30 @@ async fn main() {
     let redis_db = get_env("REDIS_DB", "0");
     let starting_url = get_env("STARTING_URL", "https://en.wikipedia.org/wiki/Kamen_Rider");
 
-    // Connect to Redis
-    let db = database::Database::connect(&redis_host, &redis_port, &redis_password, &redis_db).await;
-    if let Err(e) = db {
+    let redis_db_num: i64 = redis_db.parse().unwrap_or(0);
+    let db_instance = database::Database::connect(&redis_host, &redis_port, &redis_password, redis_db_num).await;
+    if let Err(e) = db_instance {
         error!("Error connecting to Redis: {:?}", e);
         return;
     }
-    let db = Arc::new(db.unwrap());
+    let db = Arc::new(Mutex::new(db_instance.unwrap()));
 
-    // Push starting URL with priority 0
-    if let Err(e) = db.push_url(&starting_url, 0).await {
+    if let Err(e) = db.lock().await.push_url(&starting_url, 0.0).await {
         error!("Error pushing starting URL: {:?}", e);
         return;
     }
     info!("PUSH {}", starting_url);
 
-    // Instantiate controllers
-    let page_controller = controllers::PageController::new(db.clone());
-    let links_controller = controllers::LinksController::new(db.clone());
-    let image_controller = controllers::ImageController::new(db.clone());
+    let page_controller = PageController::new(db.clone());
+    let links_controller = LinksController::new(db.clone());
+    let image_controller = ImageController::new(db.clone());
 
-    // Shared crawler state protected by mutex
-    let crawler = Arc::new(Mutex::new(crawler::CrawlerConfig {
-        pages: std::collections::HashMap::new(),
-        outlinks: std::collections::HashMap::new(),
-        backlinks: std::collections::HashMap::new(),
-        images: std::collections::HashMap::new(),
-        max_pages,
-        max_concurrency,
-        notify: Arc::new(Notify::new()),
-    }));
+    let crawler = Arc::new(Mutex::new(CrawlerConfig::new(max_pages, max_concurrency)));
 
     loop {
         info!("Checking number of entries...");
 
-        let queue_size = match db.get_indexer_queue_size().await {
+        let queue_size = match db.lock().await.get_indexer_queue_size().await {
             Ok(size) => size,
             Err(e) => {
                 error!("Error getting indexer queue: {:?}", e);
@@ -80,17 +71,16 @@ async fn main() {
             }
         };
 
-        if queue_size >= utils::MAX_INDEXER_QUEUE_SIZE {
+        if queue_size >= utils::MAX_INDEXER_QUEUE_SIZE as i64 {
             info!("Indexer queue is full. Waiting...");
 
-            // Wait for resume signal in a loop
             loop {
-                match db.pop_signal_queue().await {
+                match db.lock().await.pop_signal().await {
                     Ok(sig) if sig == utils::RESUME_CRAWL => {
                         info!("Resume crawl!");
                         break;
                     }
-                    Ok(_) => { /* ignore other signals */ }
+                    Ok(_) => { }
                     Err(e) => {
                         error!("Could not get signal: {:?}", e);
                         return;
@@ -109,7 +99,7 @@ async fn main() {
             let crawler_clone = crawler.clone();
 
             handles.push(task::spawn(async move {
-                let mut c = crawler_clone.lock().await;
+                let c = crawler_clone.lock().await;
                 c.crawl(&db_clone).await;
             }));
         }
@@ -120,15 +110,16 @@ async fn main() {
             }
         }
 
-        // Save results and clear crawler state
         let mut c = crawler.lock().await;
         page_controller.save_pages(&*c).await;
         links_controller.save_links(&*c).await;
-        image_controller.save_images(&*c).await;
+        if let Err(e) = image_controller.save_images(&*c).await {
+            error!("Error saving images: {:?}", e);
+        }
 
-        c.pages.clear();
-        c.outlinks.clear();
-        c.backlinks.clear();
-        c.images.clear();
+        c.pages.lock().await.clear();
+        c.outlinks.lock().await.clear();
+        c.backlinks.lock().await.clear();
+        c.images.lock().await.clear();
     }
 }

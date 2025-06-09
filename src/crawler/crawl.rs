@@ -2,12 +2,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use log::{info, error};
 use crate::database::Database;
-use crate::pages::{Page, create_page};
+use crate::pages::create_page;
 use crate::utils::{is_valid_url, MIN_SCORE, MAX_SCORE};
 use super::crawler::CrawlerConfig;
+use super::get_page_data::get_page_data;
+use super::get_urls_from_html::get_urls_from_html;
 
 impl CrawlerConfig {
-    pub async fn crawl(&self, db: Arc<Mutex<Database>>) {
+    pub async fn crawl(&self, db: &Arc<Mutex<Database>>) {
         let _guard = self.wg.lock().await;
 
         loop {
@@ -52,7 +54,7 @@ impl CrawlerConfig {
                 }
             };
 
-            let (links, images_map) = match get_urls_from_html(&html, &raw_url).await {
+            let (links, images_map) = match get_urls_from_html(&html, &raw_url) {
                 Ok(data) => data,
                 Err(err) => {
                     error!("Error extracting URLs from HTML: {}", err);
@@ -60,12 +62,12 @@ impl CrawlerConfig {
                 }
             };
 
-            self.add_images(&normalized_url, images_map).await;
+            self.add_images(&normalized_url, &images_map).await;
             self.update_links(&normalized_url, &links).await;
 
-            let page = create_page(normalized_url.clone(), html, content_type, status_code);
+            let page = create_page(normalized_url.clone(), html, content_type, status_code as i32);
 
-            if let Err(err) = self.add_page(&page).await {
+            if let Err(err) = self.add_page(page).await {
                 error!("Error adding page: {}", err);
                 continue;
             }
@@ -83,11 +85,12 @@ impl CrawlerConfig {
                 }
 
                 let score = match db.lock().await.exists_in_queue(&raw_link).await {
-                    Some(existing_score) => existing_score,
-                    None => depth + 1.0,
+                    Ok(Some(existing_score)) => existing_score,
+                    Ok(None) => depth + 1.0,
+                    Err(_) => depth + 1.0,
                 };
 
-                let bounded_score = score.clamp(MIN_SCORE, MAX_SCORE);
+                let bounded_score = score.clamp(MIN_SCORE as f64, MAX_SCORE as f64);
 
                 let _ = db.lock().await.push_url(&raw_link, bounded_score).await;
             }

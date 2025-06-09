@@ -2,10 +2,8 @@ use regex::Regex;
 use scraper::{Html, Selector};
 use std::collections::{HashMap, HashSet};
 use url::Url;
+use crate::utils::normalize_url::normalize_url;
 
-/// Returns (links, images), where:
-/// - links: unique valid URLs (from <a href="...">)
-/// - images: map of image src -> { alt: ..., src: ... }
 pub fn get_urls_from_html(
     html_body: &str,
     raw_url: &str,
@@ -21,7 +19,6 @@ pub fn get_urls_from_html(
     let mut link_set = HashSet::new();
     let mut image_map = HashMap::new();
 
-    // <a> tag parsing
     for element in document.select(&a_selector) {
         if let Some(href) = element.value().attr("href") {
             if href.contains(&['<', '>', '"', ' '][..]) || non_ascii.is_match(href) {
@@ -29,12 +26,11 @@ pub fn get_urls_from_html(
             }
 
             if let Ok(parsed) = base_url.join(href) {
-                link_set.insert(parsed.into_string());
+                link_set.insert(parsed.to_string());
             }
         }
     }
 
-    // <img> tag parsing
     for element in document.select(&img_selector) {
         let mut image_data = HashMap::new();
 
@@ -44,7 +40,7 @@ pub fn get_urls_from_html(
             }
 
             if let Ok(joined) = base_url.join(src) {
-                let normalized = normalize_url(&joined.into_string());
+                let normalized = normalize_url(&joined.to_string());
                 if let Ok(norm_url) = normalized {
                     image_data.insert("src".to_string(), norm_url.clone());
 

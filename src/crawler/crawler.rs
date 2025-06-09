@@ -12,6 +12,7 @@ pub struct CrawlerConfig {
     pub images: Arc<Mutex<HashMap<String, Vec<Image>>>>,
     pub max_pages: usize,
     pub concurrency_limit: Arc<Semaphore>,
+    pub wg: Arc<Mutex<()>>,
 }
 
 impl CrawlerConfig {
@@ -23,6 +24,7 @@ impl CrawlerConfig {
             images: Arc::new(Mutex::new(HashMap::new())),
             max_pages,
             concurrency_limit: Arc::new(Semaphore::new(max_concurrency)),
+            wg: Arc::new(Mutex::new(())),
         }
     }
 

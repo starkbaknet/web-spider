@@ -1,10 +1,8 @@
 pub fn is_valid_url(link: &str) -> bool {
-    // Ignore known invalid patterns
     if link.contains("w/index.php") {
         return false;
     }
 
-    // Reject percent-encoded URLs
     if link.contains('%') {
         return false;
     }

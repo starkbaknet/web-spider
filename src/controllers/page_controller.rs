@@ -2,27 +2,28 @@ use redis::AsyncCommands;
 use tracing::{info, error};
 
 pub struct PageController {
-    db: database::Database, // your db wrapper with async Redis client & context
+    db: std::sync::Arc<tokio::sync::Mutex<crate::database::Database>>,
 }
 
 impl PageController {
-    pub fn new(db: database::Database) -> Self {
+    pub fn new(db: std::sync::Arc<tokio::sync::Mutex<crate::database::Database>>) -> Self {
         Self { db }
     }
 
-    /// Get all pages stored in Redis under keys with prefix utils::PAGE_PREFIX
-    pub async fn get_all_pages(&self) -> Option<std::collections::HashMap<String, pages::Page>> {
+    pub async fn get_all_pages(&self) -> Option<std::collections::HashMap<String, crate::pages::Page>> {
         info!("Fetching data from Redis...");
 
-        let mut conn = match self.db.client.get_async_connection().await {
+        let db_guard = self.db.lock().await;
+        let mut conn = match db_guard.client.get_async_connection().await {
             Ok(c) => c,
             Err(e) => {
                 error!("Failed to get Redis connection: {:?}", e);
                 return None;
             }
         };
+        drop(db_guard); 
 
-        let keys_result: redis::RedisResult<Vec<String>> = conn.keys(format!("{}:*", utils::PAGE_PREFIX)).await;
+        let keys_result: redis::RedisResult<Vec<String>> = conn.keys(format!("{}:*", crate::utils::PAGE_PREFIX)).await;
 
         let keys = match keys_result {
             Ok(k) => k,
@@ -36,13 +37,11 @@ impl PageController {
             return Some(std::collections::HashMap::new());
         }
 
-        // Pipeline to get all pages (HGETALL)
         let mut pipe = redis::pipe();
         for key in &keys {
             pipe.cmd("HGETALL").arg(key);
         }
 
-        // Execute pipeline, returns Vec<Vec<(String, String)>>
         let results: redis::RedisResult<Vec<Vec<(String, String)>>> = pipe.query_async(&mut conn).await;
 
         let redis_pages = match results {
@@ -50,7 +49,7 @@ impl PageController {
                 let mut pages_map = std::collections::HashMap::new();
 
                 for data in results {
-                    match pages::dehash_page(data) {
+                    match crate::pages::dehash_page(&data.into_iter().collect()) {
                         Ok(page) => {
                             pages_map.insert(page.normalized_url.clone(), page);
                         }
@@ -71,35 +70,31 @@ impl PageController {
         Some(redis_pages)
     }
 
-    /// Save pages from crawler config into Redis and push page keys to indexer queue
-    pub async fn save_pages(&self, crawcfg: &crawler::CrawlerConfig) {
-        let data = &crawcfg.pages;
+    pub async fn save_pages(&self, crawcfg: &crate::crawler::crawler::CrawlerConfig) {
+        let data = crawcfg.pages.lock().await;
         info!("Writing {} entries to the db...", data.len());
 
-        let mut conn = match self.db.client.get_async_connection().await {
+        let db_guard = self.db.lock().await;
+        let mut conn = match db_guard.client.get_async_connection().await {
             Ok(c) => c,
             Err(e) => {
                 error!("Failed to get Redis connection: {:?}", e);
                 return;
             }
         };
+        drop(db_guard); 
 
         let mut pipe = redis::pipe();
 
-        for page in data {
-            match pages::hash_page(page) {
-                Ok(page_hash) => {
-                    let page_key = format!("{}:{}", utils::PAGE_PREFIX, page.normalized_url);
+        for (_, page) in data.iter() {
+            let page_hash = crate::pages::hash_page(page);
+            let page_key = format!("{}:{}", crate::utils::PAGE_PREFIX, page.normalized_url);
 
-                    pipe.hset(&page_key, &page_hash);
-
-                    // Push the page key to the indexer queue asynchronously, ignoring result here
-                    let _ = conn.lpush(utils::INDEXER_QUEUE_KEY, &page_key).await;
-                }
-                Err(e) => {
-                    error!("Error hashing page {}: {:?}", page.normalized_url, e);
-                }
+            for (field, value) in &page_hash {
+                pipe.hset(&page_key, field, value);
             }
+
+            let _: Result<(), _> = conn.lpush(crate::utils::INDEXER_QUEUE_KEY, &page_key).await;
         }
 
         if let Err(e) = pipe.query_async::<_, ()>(&mut conn).await {

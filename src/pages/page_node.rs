@@ -27,7 +27,7 @@ impl PageNode {
 impl fmt::Display for PageNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut links: Vec<_> = self.normalized_link_urls.iter().cloned().collect();
-        links.sort(); // optional: for consistent order
+        links.sort(); 
 
         write!(
             f,

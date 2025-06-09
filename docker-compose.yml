@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis
+    container_name: redis-server
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:

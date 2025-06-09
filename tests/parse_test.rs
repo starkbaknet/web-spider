@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use spider::utils::parse::{parse_int, parse_time, parse_strings_slice};
-    use chrono::{TimeZone, Utc};
+    use chrono::Utc;
 
     struct ParseIntTestCase<'a> {
         name: &'a str,
