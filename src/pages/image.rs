@@ -1,5 +1,6 @@
-type Image struct {
-    NormalizedPageURL   string
-    NormalizedSourceURL string
-    Alt                 string
+#[derive(Debug, Clone)]
+pub struct Image {
+    pub normalized_page_url: String,
+    pub normalized_source_url: String,
+    pub alt: String,
 }
