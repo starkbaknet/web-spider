@@ -72,7 +72,7 @@ Modify these values in the `docker-compose.yml` file as needed and then rename `
 ├── Dockerfile           # Multistage Docker build
 ├── docker-compose.yml   # Service orchestration
 ├── Cargo.toml
-├── .env.example.        # should rename to .env
+├── .env.example         # should rename to .env
 └── README.md
 ```
 
