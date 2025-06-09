@@ -60,7 +60,7 @@ All crawler settings are passed via environment variables inside `docker-compose
 | `MAX_CONCURRENCY` | Number of concurrent tasks         | `10`                   |
 | `MAX_PAGES`       | Maximum number of pages to crawl   | `100`                  |
 
-Modify these values in the `docker-compose.yml` file as needed.
+Modify these values in the `docker-compose.yml` file as needed and then rename `.env.example` to `.env` and modify values same as `docker-compose.yml`.
 
 ---
 
@@ -72,6 +72,7 @@ Modify these values in the `docker-compose.yml` file as needed.
 ├── Dockerfile           # Multistage Docker build
 ├── docker-compose.yml   # Service orchestration
 ├── Cargo.toml
+├── .env.example.        # should rename to .env
 └── README.md
 ```
 
