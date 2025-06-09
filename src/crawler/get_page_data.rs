@@ -1,7 +1,13 @@
 use std::error::Error;
+use std::time::Duration;
 
 pub async fn get_page_data(url: &str) -> Result<(String, u16, String), Box<dyn Error>> {
-    let response = reqwest::get(url).await?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .build()?;
+    
+    let response = client.get(url).send().await?;
 
     let status = response.status();
     let status_code = status.as_u16();

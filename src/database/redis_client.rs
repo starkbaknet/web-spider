@@ -16,8 +16,17 @@ impl Database {
     ) -> Result<Self> {
         let addr = format!("redis://{}:{}?password={}&db={}", host, port, password, db);
         let client = Client::open(addr.as_str())?;
-        let mgr = client.get_multiplexed_async_connection().await?;
-        let _test_conn = client.get_async_connection().await.map_err(|e| anyhow!("Redis connection test failed: {}", e))?;
+        
+        // Set connection timeout using tokio::time::timeout
+        let mgr = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            client.get_multiplexed_async_connection()
+        ).await.map_err(|_| anyhow!("Redis connection timeout"))??;
+        
+        let _test_conn = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client.get_async_connection()
+        ).await.map_err(|_| anyhow!("Redis test connection timeout"))?.map_err(|e| anyhow!("Redis connection test failed: {}", e))?;
         Ok(Self { conn: mgr, client: client })
     }
 

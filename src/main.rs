@@ -38,7 +38,7 @@ async fn main() {
     let redis_port = get_env("REDIS_PORT", "6379");
     let redis_password = get_env("REDIS_PASSWORD", "");
     let redis_db = get_env("REDIS_DB", "0");
-    let starting_url = get_env("STARTING_URL", "https://en.wikipedia.org/wiki/Kamen_Rider");
+    let starting_url = get_env("STARTING_URL", "https://starkbak.net");
 
     let redis_db_num: i64 = redis_db.parse().unwrap_or(0);
     let db_instance = database::Database::connect(&redis_host, &redis_port, &redis_password, redis_db_num).await;
